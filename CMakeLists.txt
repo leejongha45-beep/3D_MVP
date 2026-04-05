@@ -18,13 +18,35 @@ find_package(glm CONFIG REQUIRED)
 find_package(tinyobjloader CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 
-# 이 프로젝트의 실행 파일에 소스를 추가합니다.
-add_executable (3D_MVP "3D_MVP.cpp" "3D_MVP.h")
+# src/ 하위 소스 자동 수집
+file(GLOB_RECURSE SRC_FILES
+    "${CMAKE_CURRENT_LIST_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/src/*.h"
+)
 
-target_include_directories(3D_MVP PRIVATE ${Stb_INCLUDE_DIR})
+# 이 프로젝트의 실행 파일에 소스를 추가합니다.
+add_executable (3D_MVP "3D_MVP.cpp" "3D_MVP.h" ${SRC_FILES})
+
+# src/ 하위 include 경로 자동 수집
+file(GLOB_RECURSE SRC_HEADERS "${CMAKE_CURRENT_LIST_DIR}/src/*.h")
+set(SRC_INCLUDE_DIRS "")
+foreach(HEADER ${SRC_HEADERS})
+    get_filename_component(DIR ${HEADER} DIRECTORY)
+    list(APPEND SRC_INCLUDE_DIRS ${DIR})
+endforeach()
+list(REMOVE_DUPLICATES SRC_INCLUDE_DIRS)
+
+target_include_directories(3D_MVP PRIVATE
+    ${Stb_INCLUDE_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/src/utils
+    ${SRC_INCLUDE_DIRS}
+)
 
 target_compile_definitions(3D_MVP PRIVATE
     VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+    SHADER_DIR="${CMAKE_CURRENT_LIST_DIR}/shader/"
 )
 target_link_libraries(3D_MVP PRIVATE
     Vulkan::Vulkan
@@ -41,7 +63,7 @@ find_program(SLANGC_EXECUTABLE slangc HINTS "$ENV{VULKAN_SDK}/bin")
 function (add_slang_shader_target TARGET)
   cmake_parse_arguments ("SHADER" "" "" "SOURCES" ${ARGN})
   set (SHADERS_DIR ${CMAKE_CURRENT_LIST_DIR}/shader)
-  set (ENTRY_POINTS -entry vertMain -entry fragMain)
+  set (ENTRY_POINTS -entry main)
   add_custom_command (
           OUTPUT ${SHADERS_DIR}
           COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}

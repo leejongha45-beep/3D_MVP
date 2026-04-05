@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
@@ -18,6 +18,7 @@ import vulkan_hpp;
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
+#include <cassert>
 #include <iostream>
 
 #ifndef VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
