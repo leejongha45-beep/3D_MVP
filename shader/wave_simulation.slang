@@ -46,10 +46,10 @@ RWTexture2D<float4> outputImage;
 ConstantBuffer<SceneData> scene;
 
 [[vk::binding(2, 0)]]
-RWStructuredBuffer<float> waveField;
+RWStructuredBuffer<float4> waveField;    // xyz=RGB파동, w=반사계수
 
 [[vk::binding(3, 0)]]
-RWStructuredBuffer<float> waveVelocity;
+RWStructuredBuffer<float3> waveVelocity; // RGB 스펙트럼별 속도
 
 static const uint GRID_SIZE = 128;
 
@@ -77,12 +77,23 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         return;
 
     uint index = toIndex(coord);
-    float current = waveField[index];
+    float4 currentField = waveField[index];
+    float3 currentWave = currentField.xyz;
+    float reflectCoeff = currentField.w;
     float c = scene.light.propagationSpeed;
     float damping = scene.light.damping;
 
+    // 벽(오브젝트) 셀이면 반사 처리
+    if (reflectCoeff > 0.0)
+    {
+        // 반사 계수만큼 파동 반전 (나머지는 흡수)
+        waveField[index] = float4(-currentWave * reflectCoeff, reflectCoeff);
+        waveVelocity[index] = -waveVelocity[index] * reflectCoeff;
+        return;
+    }
+
     // 6방향 이웃 평균
-    float neighborSum = 0.0;
+    float3 neighborSum = float3(0.0, 0.0, 0.0);
     int neighborCount = 0;
 
     int3 offsets[6] = {
@@ -96,27 +107,27 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         int3 neighborCoord = int3(coord) + offsets[i];
         if (isInBounds(neighborCoord))
         {
-            neighborSum += waveField[toIndex(uint3(neighborCoord))];
+            neighborSum += waveField[toIndex(uint3(neighborCoord))].xyz;
             neighborCount++;
         }
     }
 
-    float neighborAvg = neighborSum / float(neighborCount);
+    float3 neighborAvg = neighborSum / float(neighborCount);
 
     // 파동 방정식: velocity += c * (avg - current); field += velocity;
-    float velocity = waveVelocity[index];
-    velocity += c * (neighborAvg - current);
+    float3 velocity = waveVelocity[index];
+    velocity += c * (neighborAvg - currentWave);
     velocity *= damping;
 
     waveVelocity[index] = velocity;
-    waveField[index] = current + velocity;
+    waveField[index] = float4(currentWave + velocity, 0.0);
 
-    // 태양광 평면파 주입: 격자 상단(y=0)에서 아래 방향으로
+    // 태양광 평면파 주입: 격자 상단(y=0)에서 아래 방향으로 (백색광 = RGB 동일)
     if (coord.y == 0)
     {
-        // sourcePhase는 프레임마다 변하지 않으므로 격자 위치 기반으로 위상 생성
         float phase = float(coord.x + coord.z) * scene.light.frequency;
-        waveField[index] += sin(phase) * scene.light.frequency;
+        float wave = sin(phase) * scene.light.frequency;
+        waveField[index] = float4(currentWave + velocity + float3(wave, wave, wave), 0.0);
     }
 
     // 경계 흡수: 격자 가장자리에서 에너지 감쇠
@@ -124,7 +135,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         coord.y == GRID_SIZE - 1 ||
         coord.z == 0 || coord.z == GRID_SIZE - 1)
     {
-        waveField[index] *= 0.9;
+        waveField[index] = float4(waveField[index].xyz * 0.9, waveField[index].w);
         waveVelocity[index] *= 0.9;
     }
 }

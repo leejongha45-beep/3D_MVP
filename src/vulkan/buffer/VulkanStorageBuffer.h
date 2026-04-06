@@ -3,6 +3,8 @@
 #include "3D_MVP.h"
 #include "interface/QRenderObject.h"
 
+#include <glm/glm.hpp>
+
 class VulkanStorageBuffer : public QRenderObject
 {
 public:
@@ -13,12 +15,17 @@ public:
 
 	const vk::raii::Buffer* getFieldBufferInst() const { return &fieldBufferInst; }
 	const vk::raii::Buffer* getVelocityBufferInst() const { return &velocityBufferInst; }
-	vk::DeviceSize getBufferSize() const { return GRID_TOTAL * sizeof(float); }
+	vk::DeviceSize getFieldBufferSize() const { return GRID_TOTAL * sizeof(float) * 4; }
+	vk::DeviceSize getVelocityBufferSize() const { return GRID_TOTAL * sizeof(float) * 3; }
 	uint32_t getGridSize() const { return GRID_SIZE; }
+
+	void markStaticObject(const glm::vec3& worldPosition, const glm::vec3& reflectSpectrum);
+	void clearGrid();
 
 private:
 	uint32_t findMemoryType(const vk::raii::PhysicalDevice& physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties) const;
-	void createBuffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& memory);
+	void createBuffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, vk::DeviceSize size, vk::raii::Buffer& buffer, vk::raii::DeviceMemory& memory, void*& mapped);
+	uint32_t worldToGridIndex(const glm::vec3& worldPosition) const;
 
 	const class VulkanDevice* vulkanDeviceRef = nullptr;
 	const class VulkanPhysicalDevice* vulkanPhysicalDeviceRef = nullptr;
@@ -28,6 +35,9 @@ private:
 
 	vk::raii::Buffer fieldBufferInst = nullptr;
 	vk::raii::DeviceMemory fieldMemoryInst = nullptr;
+	void* fieldMappedInst = nullptr;
+
 	vk::raii::Buffer velocityBufferInst = nullptr;
 	vk::raii::DeviceMemory velocityMemoryInst = nullptr;
+	void* velocityMappedInst = nullptr;
 };

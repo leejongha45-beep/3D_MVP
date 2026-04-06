@@ -46,10 +46,10 @@ RWTexture2D<float4> outputImage;
 ConstantBuffer<SceneData> scene;
 
 [[vk::binding(2, 0)]]
-RWStructuredBuffer<float> waveField;
+RWStructuredBuffer<float4> waveField;    // xyz=RGB파동, w=반사계수
 
 [[vk::binding(3, 0)]]
-RWStructuredBuffer<float> waveVelocity;
+RWStructuredBuffer<float3> waveVelocity; // RGB 스펙트럼별 속도
 
 static const uint GRID_SIZE = 128;
 
@@ -95,22 +95,39 @@ bool rayPlaneIntersect(float3 rayOrigin, float3 rayDir, float3 planePos, float3 
     return true;
 }
 
-// 파동 에너지 샘플링: 해당 격자 위치의 field^2 값
-float sampleWaveEnergy(int3 gridCoord)
+// 카메라 방향에서 레이를 따라 격자를 순회하며 파동 진폭 합산 (간섭 보존)
+float3 traceRayEnergy(float3 rayOrigin, float3 rayDirection)
 {
-    if (!isInGrid(gridCoord))
-        return 0.0;
+    float3 amplitudeSum = float3(0.0, 0.0, 0.0);
 
-    // y축 전체를 따라 에너지 누적 (수직 방향 광자 경로)
-    float energy = 0.0;
-    for (int y = 0; y < int(GRID_SIZE); ++y)
+    // 격자 범위 내에서 레이마칭 (고정 스텝)
+    float stepSize = 1.0;
+    float maxDistance = float(GRID_SIZE) * 2.0;
+
+    for (float t = 0.0; t < maxDistance; t += stepSize)
     {
-        uint index = toIndex(uint3(gridCoord.x, y, gridCoord.z));
-        float field = waveField[index];
-        energy += field * field;
+        float3 samplePos = rayOrigin + rayDirection * t;
+        int3 gridCoord = worldToGrid(samplePos);
+
+        if (!isInGrid(gridCoord))
+            continue;
+
+        uint index = toIndex(uint3(gridCoord));
+        float4 field = waveField[index];
+
+        // 벽 셀이면 반사된 진폭을 취하고 중단
+        if (field.w > 0.0)
+        {
+            amplitudeSum += field.xyz * field.w;
+            break;
+        }
+
+        // 빈 공간이면 진폭 합산 (양수/음수 그대로 → 간섭 보존)
+        amplitudeSum += field.xyz * 0.1;
     }
 
-    return energy;
+    // 최종 제곱: 보강 간섭은 밝게, 상쇄 간섭은 어둡게
+    return amplitudeSum * amplitudeSum;
 }
 
 [shader("compute")]
@@ -140,24 +157,12 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 rayOrigin = scene.camera.position;
     float3 rayDirection = normalize(forward + uv.x * fovScale * right + uv.y * fovScale * up);
 
-    // 배경색
-    float4 color = float4(0.0, 0.0, 0.0, 1.0);
+    // 카메라 방향으로 격자의 파동 에너지 수집
+    float3 energy = traceRayEnergy(rayOrigin, rayDirection);
 
-    // Uniform Buffer 플레인 값으로 교차 테스트
-    float denom = dot(scene.plane.normal, rayDirection);
-    if (abs(denom) > 0.0001)
-    {
-        float t = dot(scene.plane.position - rayOrigin, scene.plane.normal) / denom;
-        if (t > 0.0)
-        {
-            float3 hp = rayOrigin + rayDirection * t;
-            float halfSize = scene.plane.size * 0.5;
-            if (abs(hp.x - scene.plane.position.x) <= halfSize && abs(hp.z - scene.plane.position.z) <= halfSize)
-            {
-                color = float4(1.0, 1.0, 1.0, 1.0);
-            }
-        }
-    }
+    // 에너지 → 밝기 변환 (감마 보정)
+    float3 brightness = pow(energy, float3(0.45, 0.45, 0.45));
+    brightness = clamp(brightness, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0));
 
-    outputImage[texCoord] = color;
+    outputImage[texCoord] = float4(brightness, 1.0);
 }

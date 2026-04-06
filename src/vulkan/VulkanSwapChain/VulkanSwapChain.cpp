@@ -374,13 +374,13 @@ void VulkanSwapChain::createDescriptorPoolAndSet(const vk::raii::Device& device)
 	vk::DescriptorBufferInfo fieldBufferInfo{
 		.buffer = **(vulkanStorageBufferRef->getFieldBufferInst()),
 		.offset = 0,
-		.range  = vulkanStorageBufferRef->getBufferSize()
+		.range  = vulkanStorageBufferRef->getFieldBufferSize()
 	};
 
 	vk::DescriptorBufferInfo velocityBufferInfo{
 		.buffer = **(vulkanStorageBufferRef->getVelocityBufferInst()),
 		.offset = 0,
-		.range  = vulkanStorageBufferRef->getBufferSize()
+		.range  = vulkanStorageBufferRef->getVelocityBufferSize()
 	};
 
 	std::array<vk::WriteDescriptorSet, 4> writeDescriptorSets = {

@@ -21,12 +21,14 @@ private:
 	const class QWaveWorld* worldRef = nullptr;
 	void createSyncObjects();
 	void updateSceneData();
+	void markStaticObjects();
 
 	std::vector<std::unique_ptr<class QRenderObject>> renderObjects;
 	class VulkanSwapChain* swapChainRef = nullptr;
 	class VulkanDevice* vulkanDeviceRef = nullptr;
 	class VulkanUniformBuffer* vulkanUniformBufferRef = nullptr;
 	class VulkanCommandPool* vulkanCommandPoolRef = nullptr;
+	class VulkanStorageBuffer* vulkanStorageBufferRef = nullptr;
 
 	std::vector<vk::raii::Semaphore> imageAvailableSemaphoresInst;
 	std::vector<vk::raii::Semaphore> renderFinishedSemaphoresInst;

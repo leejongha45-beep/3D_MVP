@@ -52,10 +52,10 @@ void QWaveRenderer::initialize()
 	vulkanUniformBufferRef = new VulkanUniformBuffer(vulkanDeviceRef, pVulkanPhysicalDevice);
 	renderObjects.emplace_back(vulkanUniformBufferRef);
 
-	auto pVulkanStorageBuffer = new VulkanStorageBuffer(vulkanDeviceRef, pVulkanPhysicalDevice);
-	renderObjects.emplace_back(pVulkanStorageBuffer);
+	vulkanStorageBufferRef = new VulkanStorageBuffer(vulkanDeviceRef, pVulkanPhysicalDevice);
+	renderObjects.emplace_back(vulkanStorageBufferRef);
 
-	swapChainRef = new VulkanSwapChain(vulkanDeviceRef, pVulkanPhysicalDevice, pVulkanSurface, vulkanUniformBufferRef, pVulkanStorageBuffer, windowRef);
+	swapChainRef = new VulkanSwapChain(vulkanDeviceRef, pVulkanPhysicalDevice, pVulkanSurface, vulkanUniformBufferRef, vulkanStorageBufferRef, windowRef);
 	renderObjects.emplace_back(swapChainRef);
 
 	vulkanCommandPoolRef = new VulkanCommandPool(vulkanDeviceRef, swapChainRef);
@@ -70,6 +70,7 @@ void QWaveRenderer::initialize()
 	}
 
 	createSyncObjects();
+	markStaticObjects();
 }
 
 void QWaveRenderer::update(float deltaSeconds)
@@ -303,9 +304,6 @@ void QWaveRenderer::updateSceneData()
 		return;
 
 	SceneData sceneData{};
-	std::cout << "Fwd: " << pCamera->getForward().x << ", " << pCamera->getForward().y << ", " << pCamera->getForward().z
-		<< " | Plane: " << pPlane->getPosition().x << ", " << pPlane->getPosition().y << ", " << pPlane->getPosition().z
-		<< " | Size: " << pPlane->getSize() << std::endl;
 	sceneData.camera.position = pCamera->getPosition();
 	sceneData.camera.forward  = pCamera->getForward();
 	sceneData.camera.up       = pCamera->getUp();
@@ -322,4 +320,38 @@ void QWaveRenderer::updateSceneData()
 	sceneData.light.damping          = pLight->getDamping();
 
 	vulkanUniformBufferRef->updateSceneData(sceneData);
+}
+
+void QWaveRenderer::markStaticObjects()
+{
+	if (!ENSURE(worldRef))
+		return;
+	if (!ENSURE(vulkanStorageBufferRef))
+		return;
+
+	QWavePlane* pPlane = worldRef->getPlaneRef();
+	if (!ENSURE(pPlane))
+		return;
+
+	glm::vec3 planePosition = pPlane->getPosition();
+	glm::vec3 planeColor = pPlane->getColor();
+	float planeSize = pPlane->getSize();
+	float halfSize = planeSize * 0.5f;
+	uint32_t gridSize = vulkanStorageBufferRef->getGridSize();
+
+	// 플레인 영역을 격자에 마킹 (y 고정, xz 평면)
+	int gridY = static_cast<int>(planePosition.y);
+	int startX = static_cast<int>(planePosition.x - halfSize);
+	int endX = static_cast<int>(planePosition.x + halfSize);
+	int startZ = static_cast<int>(planePosition.z - halfSize);
+	int endZ = static_cast<int>(planePosition.z + halfSize);
+
+	for (int z = startZ; z <= endZ; ++z)
+	{
+		for (int x = startX; x <= endX; ++x)
+		{
+			glm::vec3 worldPos = glm::vec3(static_cast<float>(x), static_cast<float>(gridY), static_cast<float>(z));
+			vulkanStorageBufferRef->markStaticObject(worldPos, planeColor);
+		}
+	}
 }
