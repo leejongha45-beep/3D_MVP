@@ -26,7 +26,8 @@ struct LightData
 	float frequency;
 	float propagationSpeed;
 	float damping;
-	float _pad0[2];
+	float time;
+	float _pad0;
 };
 
 struct SceneData

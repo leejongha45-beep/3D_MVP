@@ -12,9 +12,11 @@
 #include "camera/QWaveCamera.h"
 #include "worldobject/plane/QWavePlane.h"
 #include "worldobject/light/QWaveLight.h"
+#include "worldobject/cube/QWaveCube.h"
 #include "utils/GpuStructs.h"
 
 #include <array>
+#include <chrono>
 
 QWaveRenderer::QWaveRenderer(GLFWwindow* windowRef, QWaveWorld* worldRef)
 	: windowRef(windowRef), worldRef(worldRef)
@@ -71,10 +73,13 @@ void QWaveRenderer::initialize()
 
 	createSyncObjects();
 	markStaticObjects();
+	precomputeWaveSimulation();
 }
 
 void QWaveRenderer::update(float deltaSeconds)
 {
+	totalTimeInst += deltaSeconds;
+
 	if (!ENSURE(vulkanDeviceRef))
 		return;
 	if (!ENSURE(swapChainRef))
@@ -134,26 +139,29 @@ void QWaveRenderer::update(float deltaSeconds)
 		vk::PipelineStageFlagBits::eComputeShader,
 		{}, {}, {}, storageBarrier);
 
-	// 파동 시뮬레이션 Compute 디스패치
-	pCommandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, **swapChainRef->getWaveSimulationPipelineInst());
-	pCommandBuffer->bindDescriptorSets(vk::PipelineBindPoint::eCompute, **swapChainRef->getPipelineLayoutInst(), 0, **swapChainRef->getDescriptorSetInst(), {});
-	pCommandBuffer->dispatch(128 / 8, 128 / 8, 128 / 8);
+	// 사전 계산 완료 전에만 시뮬레이션 디스패치
+	if (!wavePrecomputedInst)
+	{
+		pCommandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, **swapChainRef->getWaveSimulationPipelineInst());
+		pCommandBuffer->bindDescriptorSets(vk::PipelineBindPoint::eCompute, **swapChainRef->getPipelineLayoutInst(), 0, **swapChainRef->getDescriptorSetInst(), {});
+		pCommandBuffer->dispatch(128 / 8, 128 / 8, 128 / 8);
 
-	// 파동 시뮬레이션 → 렌더링 배리어
-	vk::MemoryBarrier2 computeBarrier{
-		.srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
-		.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
-		.dstStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
-		.dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite
-	};
-	vk::DependencyInfo dependencyInfo{
-		.memoryBarrierCount = 1,
-		.pMemoryBarriers    = &computeBarrier
-	};
-	pCommandBuffer->pipelineBarrier2(dependencyInfo);
+		vk::MemoryBarrier2 computeBarrier{
+			.srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
+			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+			.dstStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
+			.dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite
+		};
+		vk::DependencyInfo dependencyInfo{
+			.memoryBarrierCount = 1,
+			.pMemoryBarriers    = &computeBarrier
+		};
+		pCommandBuffer->pipelineBarrier2(dependencyInfo);
+	}
 
 	// 렌더링 Compute 디스패치
 	pCommandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, **swapChainRef->getRenderPipelineInst());
+	pCommandBuffer->bindDescriptorSets(vk::PipelineBindPoint::eCompute, **swapChainRef->getPipelineLayoutInst(), 0, **swapChainRef->getDescriptorSetInst(), {});
 	pCommandBuffer->dispatch(
 		(extent.width + 15) / 16,
 		(extent.height + 15) / 16,
@@ -300,6 +308,15 @@ void QWaveRenderer::updateSceneData()
 	QWavePlane* pPlane = worldRef->getPlaneRef();
 	QWaveLight* pLight = worldRef->getLightRef();
 
+	static int debugCount = 0;
+	if (debugCount++ < 5)
+	{
+		std::cout << "Cam pos: " << pCamera->getPosition().x << "," << pCamera->getPosition().y << "," << pCamera->getPosition().z
+			<< " fwd: " << pCamera->getForward().x << "," << pCamera->getForward().y << "," << pCamera->getForward().z
+			<< " Plane y: " << pPlane->getPosition().y
+			<< " Vertices: " << pPlane->getVertices().size() << std::endl;
+	}
+
 	if (!ENSURE(pCamera) || !ENSURE(pPlane) || !ENSURE(pLight))
 		return;
 
@@ -310,14 +327,15 @@ void QWaveRenderer::updateSceneData()
 	sceneData.camera.fov      = pCamera->getFov();
 
 	sceneData.plane.position = pPlane->getPosition();
-	sceneData.plane.normal   = pPlane->getNormal();
-	sceneData.plane.color    = pPlane->getColor();
+	sceneData.plane.normal   = glm::vec3(0.0f, 1.0f, 0.0f);
+	sceneData.plane.color    = glm::vec3(0.4f, 0.4f, 0.4f);
 	sceneData.plane.size     = pPlane->getSize();
 
 	sceneData.light.direction        = pLight->getDirection();
 	sceneData.light.frequency        = pLight->getFrequency();
 	sceneData.light.propagationSpeed = pLight->getPropagationSpeed();
 	sceneData.light.damping          = pLight->getDamping();
+	sceneData.light.time             = totalTimeInst;
 
 	vulkanUniformBufferRef->updateSceneData(sceneData);
 }
@@ -333,25 +351,105 @@ void QWaveRenderer::markStaticObjects()
 	if (!ENSURE(pPlane))
 		return;
 
-	glm::vec3 planePosition = pPlane->getPosition();
-	glm::vec3 planeColor = pPlane->getColor();
-	float planeSize = pPlane->getSize();
-	float halfSize = planeSize * 0.5f;
-	uint32_t gridSize = vulkanStorageBufferRef->getGridSize();
-
-	// 플레인 영역을 격자에 마킹 (y 고정, xz 평면)
-	int gridY = static_cast<int>(planePosition.y);
-	int startX = static_cast<int>(planePosition.x - halfSize);
-	int endX = static_cast<int>(planePosition.x + halfSize);
-	int startZ = static_cast<int>(planePosition.z - halfSize);
-	int endZ = static_cast<int>(planePosition.z + halfSize);
-
-	for (int z = startZ; z <= endZ; ++z)
+	const auto& vertices = pPlane->getVertices();
+	for (const auto& vertex : vertices)
 	{
-		for (int x = startX; x <= endX; ++x)
+		vulkanStorageBufferRef->markStaticObject(vertex.position, vertex.reflectSpectrum);
+	}
+
+	const auto& cubes = worldRef->getCubesRef();
+	for (const auto& cube : cubes)
+	{
+		if (!ENSURE(cube))
+			continue;
+
+		const auto& cubeVertices = cube->getVertices();
+		for (const auto& vertex : cubeVertices)
 		{
-			glm::vec3 worldPos = glm::vec3(static_cast<float>(x), static_cast<float>(gridY), static_cast<float>(z));
-			vulkanStorageBufferRef->markStaticObject(worldPos, planeColor);
+			vulkanStorageBufferRef->markStaticObject(vertex.position, vertex.reflectSpectrum);
 		}
 	}
+}
+
+void QWaveRenderer::precomputeWaveSimulation()
+{
+	if (!ENSURE(vulkanDeviceRef))
+		return;
+	if (!ENSURE(swapChainRef))
+		return;
+	if (!ENSURE(vulkanCommandPoolRef))
+		return;
+
+	const vk::raii::Device* pDevice = vulkanDeviceRef->getDeviceInst();
+	if (!ENSURE(pDevice))
+		return;
+
+	const vk::raii::Queue* pGraphicsQueue = vulkanDeviceRef->getGraphicsQueueInst();
+	if (!ENSURE(pGraphicsQueue))
+		return;
+
+	const vk::raii::CommandBuffer* pCommandBuffer = vulkanCommandPoolRef->getCommandBufferInst(0);
+	if (!ENSURE(pCommandBuffer))
+		return;
+
+	// 초기 SceneData 업데이트 (시간값 포함)
+	updateSceneData();
+
+	constexpr int totalSteps = 1000;
+	constexpr int stepsPerBatch = 100;
+	constexpr int batchCount = totalSteps / stepsPerBatch;
+
+	std::cout << "[WaveSimulation] Precomputing " << totalSteps << " steps..." << std::endl;
+	auto startTime = std::chrono::high_resolution_clock::now();
+
+	for (int batch = 0; batch < batchCount; ++batch)
+	{
+		pCommandBuffer->reset();
+		pCommandBuffer->begin(vk::CommandBufferBeginInfo{});
+
+		pCommandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, **swapChainRef->getWaveSimulationPipelineInst());
+		pCommandBuffer->bindDescriptorSets(vk::PipelineBindPoint::eCompute, **swapChainRef->getPipelineLayoutInst(), 0, **swapChainRef->getDescriptorSetInst(), {});
+
+		for (int step = 0; step < stepsPerBatch; ++step)
+		{
+			pCommandBuffer->dispatch(128 / 8, 128 / 8, 128 / 8);
+
+			if (step < stepsPerBatch - 1)
+			{
+				vk::MemoryBarrier2 stepBarrier{
+					.srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
+					.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+					.dstStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
+					.dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite
+				};
+				vk::DependencyInfo stepDependency{
+					.memoryBarrierCount = 1,
+					.pMemoryBarriers    = &stepBarrier
+				};
+				pCommandBuffer->pipelineBarrier2(stepDependency);
+			}
+		}
+
+		pCommandBuffer->end();
+
+		vk::SubmitInfo submitInfo{
+			.commandBufferCount = 1,
+			.pCommandBuffers    = &**pCommandBuffer
+		};
+		pGraphicsQueue->submit(submitInfo);
+		pDevice->waitIdle();
+
+		// 시간 업데이트
+		totalTimeInst += stepsPerBatch * 0.016f;
+		updateSceneData();
+
+		int completedSteps = (batch + 1) * stepsPerBatch;
+		int percent = (completedSteps * 100) / totalSteps;
+		std::cout << "\r[WaveSimulation] Step " << completedSteps << "/" << totalSteps << " (" << percent << "%)" << std::flush;
+	}
+
+	auto endTime = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+	std::cout << std::endl << "[WaveSimulation] Precomputation complete. (" << duration << "ms)" << std::endl;
+	wavePrecomputedInst = true;
 }

@@ -29,7 +29,8 @@ struct LightData
     float frequency;
     float propagationSpeed;
     float damping;
-    float2 _pad0;
+    float time;
+    float _pad0;
 };
 
 struct SceneData
@@ -95,12 +96,12 @@ bool rayPlaneIntersect(float3 rayOrigin, float3 rayDir, float3 planePos, float3 
     return true;
 }
 
-// 카메라 방향에서 레이를 따라 격자를 순회하며 파동 진폭 합산 (간섭 보존)
-float3 traceRayEnergy(float3 rayOrigin, float3 rayDirection)
+// 카메라 레이가 표면을 만나면 직전 셀의 파동 에너지 × 반사 스펙트럼
+float3 queryWaveEnergy(float3 rayOrigin, float3 rayDirection)
 {
-    float3 amplitudeSum = float3(0.0, 0.0, 0.0);
+    bool enteredGrid = false;
+    float3 prevAmplitude = float3(0.0, 0.0, 0.0);
 
-    // 격자 범위 내에서 레이마칭 (고정 스텝)
     float stepSize = 1.0;
     float maxDistance = float(GRID_SIZE) * 2.0;
 
@@ -110,24 +111,27 @@ float3 traceRayEnergy(float3 rayOrigin, float3 rayDirection)
         int3 gridCoord = worldToGrid(samplePos);
 
         if (!isInGrid(gridCoord))
+        {
+            if (enteredGrid)
+                break;
             continue;
+        }
+        enteredGrid = true;
 
         uint index = toIndex(uint3(gridCoord));
         float4 field = waveField[index];
 
-        // 벽 셀이면 반사된 진폭을 취하고 중단
+        // 표면 셀을 만나면 직전 셀의 파동 에너지 × 반사계수
         if (field.w > 0.0)
         {
-            amplitudeSum += field.xyz * field.w;
-            break;
+            float3 energy = prevAmplitude * prevAmplitude;
+            return energy * field.w;
         }
 
-        // 빈 공간이면 진폭 합산 (양수/음수 그대로 → 간섭 보존)
-        amplitudeSum += field.xyz * 0.1;
+        prevAmplitude = field.xyz;
     }
 
-    // 최종 제곱: 보강 간섭은 밝게, 상쇄 간섭은 어둡게
-    return amplitudeSum * amplitudeSum;
+    return float3(0.0, 0.0, 0.0);
 }
 
 [shader("compute")]
@@ -158,7 +162,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 rayDirection = normalize(forward + uv.x * fovScale * right + uv.y * fovScale * up);
 
     // 카메라 방향으로 격자의 파동 에너지 수집
-    float3 energy = traceRayEnergy(rayOrigin, rayDirection);
+    float3 energy = queryWaveEnergy(rayOrigin, rayDirection);
 
     // 에너지 → 밝기 변환 (감마 보정)
     float3 brightness = pow(energy, float3(0.45, 0.45, 0.45));

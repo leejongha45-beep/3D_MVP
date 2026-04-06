@@ -22,6 +22,7 @@ private:
 	void createSyncObjects();
 	void updateSceneData();
 	void markStaticObjects();
+	void precomputeWaveSimulation();
 
 	std::vector<std::unique_ptr<class QRenderObject>> renderObjects;
 	class VulkanSwapChain* swapChainRef = nullptr;
@@ -34,4 +35,6 @@ private:
 	std::vector<vk::raii::Semaphore> renderFinishedSemaphoresInst;
 	std::vector<vk::raii::Fence> inFlightFencesInst;
 	uint32_t currentFrameInst = 0;
+	float totalTimeInst = 0.0f;
+	bool wavePrecomputedInst = false;
 };

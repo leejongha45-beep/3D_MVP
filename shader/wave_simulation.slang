@@ -29,7 +29,8 @@ struct LightData
     float frequency;
     float propagationSpeed;
     float damping;
-    float2 _pad0;
+    float time;
+    float _pad0;
 };
 
 struct SceneData
@@ -79,20 +80,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     uint index = toIndex(coord);
     float4 currentField = waveField[index];
     float3 currentWave = currentField.xyz;
-    float reflectCoeff = currentField.w;
     float c = scene.light.propagationSpeed;
     float damping = scene.light.damping;
 
-    // 벽(오브젝트) 셀이면 반사 처리
-    if (reflectCoeff > 0.0)
-    {
-        // 반사 계수만큼 파동 반전 (나머지는 흡수)
-        waveField[index] = float4(-currentWave * reflectCoeff, reflectCoeff);
-        waveVelocity[index] = -waveVelocity[index] * reflectCoeff;
+    // 표면 셀은 파동 전파에서 제외 (파동이 통과 못함 → 그림자 생성)
+    if (currentField.w > 0.0)
         return;
-    }
 
-    // 6방향 이웃 평균
+    // 6방향 이웃 평균 (표면 셀인 이웃은 건너뜀)
     float3 neighborSum = float3(0.0, 0.0, 0.0);
     int neighborCount = 0;
 
@@ -107,7 +102,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         int3 neighborCoord = int3(coord) + offsets[i];
         if (isInBounds(neighborCoord))
         {
-            neighborSum += waveField[toIndex(uint3(neighborCoord))].xyz;
+            float4 neighborField = waveField[toIndex(uint3(neighborCoord))];
+            if (neighborField.w > 0.0)
+            {
+                // 표면 셀은 반사: 현재 셀 값을 반사계수만큼 반영
+                neighborSum += currentWave * neighborField.w;
+            }
+            else
+            {
+                neighborSum += neighborField.xyz;
+            }
             neighborCount++;
         }
     }
@@ -120,22 +124,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     velocity *= damping;
 
     waveVelocity[index] = velocity;
-    waveField[index] = float4(currentWave + velocity, 0.0);
+    waveField[index] = float4(currentWave + velocity, currentField.w);
 
-    // 태양광 평면파 주입: 격자 상단(y=0)에서 아래 방향으로 (백색광 = RGB 동일)
-    if (coord.y == 0)
+    // 태양광 평면파 주입: 격자 상단(y=GRID_SIZE-1)에서 아래 방향으로 (백색광 = RGB 동일)
+    if (coord.y == GRID_SIZE - 1)
     {
-        float phase = float(coord.x + coord.z) * scene.light.frequency;
-        float wave = sin(phase) * scene.light.frequency;
-        waveField[index] = float4(currentWave + velocity + float3(wave, wave, wave), 0.0);
+        float phase = scene.light.time * scene.light.frequency;
+        float wave = sin(phase) * 0.02;
+        waveField[index] = float4(currentWave + velocity + float3(wave, wave, wave), currentField.w);
     }
 
-    // 경계 흡수: 격자 가장자리에서 에너지 감쇠
-    if (coord.x == 0 || coord.x == GRID_SIZE - 1 ||
-        coord.y == GRID_SIZE - 1 ||
-        coord.z == 0 || coord.z == GRID_SIZE - 1)
-    {
-        waveField[index] = float4(waveField[index].xyz * 0.9, waveField[index].w);
-        waveVelocity[index] *= 0.9;
-    }
 }
