@@ -10,7 +10,7 @@
 class QWaveCube : public QObject
 {
 public:
-	QWaveCube(const glm::vec3& position, const glm::vec3& size, const glm::vec3& reflectSpectrum);
+	QWaveCube(const glm::vec3& position, const glm::vec3& size, const glm::vec3& reflectSpectrum, float roughness);
 	virtual ~QWaveCube() override;
 
 	void initialize() override;
@@ -23,6 +23,7 @@ private:
 	glm::vec3 position;
 	glm::vec3 size;
 	glm::vec3 reflectSpectrum;
+	float roughness;
 
 	std::vector<VertexData> verticesInst;
 };

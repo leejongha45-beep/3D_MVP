@@ -123,3 +123,4 @@ void QWaveCamera::updateVectors()
 	right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
 	up = glm::normalize(glm::cross(right, forward));
 }
+

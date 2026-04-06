@@ -1,5 +1,5 @@
-// QuantumWave Renderer - 파동 시뮬레이션 Compute Shader
-// 파인만 경로 적분 기반: velocity += c * (neighbor_avg - current); field += velocity;
+// QuantumWave Renderer - 2D 파동 시뮬레이션 Compute Shader (태양 시점 Shadow Map)
+// velocity += c * (neighbor_avg - current); field += velocity;
 
 struct CameraData
 {
@@ -47,34 +47,31 @@ RWTexture2D<float4> outputImage;
 ConstantBuffer<SceneData> scene;
 
 [[vk::binding(2, 0)]]
-RWStructuredBuffer<float4> waveField;    // xyz=RGB파동, w=반사계수
+RWStructuredBuffer<float4> waveField;    // xyz=RGB파동, w=반사계수 (2D: 1024x1024)
 
 [[vk::binding(3, 0)]]
-RWStructuredBuffer<float3> waveVelocity; // RGB 스펙트럼별 속도
+RWStructuredBuffer<float4> waveVelocity; // xyz=RGB속도, w=roughness (2D: 1024x1024)
 
-static const uint GRID_SIZE = 128;
+static const uint GRID_SIZE = 1024;
 
-// 3D 좌표 → 1D 인덱스
-uint toIndex(uint3 coord)
+uint toIndex(uint2 coord)
 {
-    return coord.z * GRID_SIZE * GRID_SIZE + coord.y * GRID_SIZE + coord.x;
+    return coord.y * GRID_SIZE + coord.x;
 }
 
-// 격자 범위 내인지 확인
-bool isInBounds(int3 coord)
+bool isInBounds(int2 coord)
 {
     return coord.x >= 0 && coord.x < int(GRID_SIZE)
-        && coord.y >= 0 && coord.y < int(GRID_SIZE)
-        && coord.z >= 0 && coord.z < int(GRID_SIZE);
+        && coord.y >= 0 && coord.y < int(GRID_SIZE);
 }
 
 [shader("compute")]
-[numthreads(8, 8, 8)]
+[numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    uint3 coord = dispatchThreadID;
+    uint2 coord = dispatchThreadID.xy;
 
-    if (coord.x >= GRID_SIZE || coord.y >= GRID_SIZE || coord.z >= GRID_SIZE)
+    if (coord.x >= GRID_SIZE || coord.y >= GRID_SIZE)
         return;
 
     uint index = toIndex(coord);
@@ -83,55 +80,48 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float c = scene.light.propagationSpeed;
     float damping = scene.light.damping;
 
-    // 표면 셀은 파동 전파에서 제외 (파동이 통과 못함 → 그림자 생성)
-    if (currentField.w > 0.0)
-        return;
-
-    // 6방향 이웃 평균 (표면 셀인 이웃은 건너뜀)
+    // 4방향 이웃 평균
     float3 neighborSum = float3(0.0, 0.0, 0.0);
     int neighborCount = 0;
 
-    int3 offsets[6] = {
-        int3(1, 0, 0), int3(-1, 0, 0),
-        int3(0, 1, 0), int3(0, -1, 0),
-        int3(0, 0, 1), int3(0, 0, -1)
+    int2 offsets[4] = {
+        int2(1, 0), int2(-1, 0),
+        int2(0, 1), int2(0, -1)
     };
 
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 4; ++i)
     {
-        int3 neighborCoord = int3(coord) + offsets[i];
+        int2 neighborCoord = int2(coord) + offsets[i];
         if (isInBounds(neighborCoord))
         {
-            float4 neighborField = waveField[toIndex(uint3(neighborCoord))];
-            if (neighborField.w > 0.0)
-            {
-                // 표면 셀은 반사: 현재 셀 값을 반사계수만큼 반영
-                neighborSum += currentWave * neighborField.w;
-            }
-            else
-            {
-                neighborSum += neighborField.xyz;
-            }
+            neighborSum += waveField[toIndex(uint2(neighborCoord))].xyz;
             neighborCount++;
         }
     }
 
     float3 neighborAvg = neighborSum / float(neighborCount);
 
-    // 파동 방정식: velocity += c * (avg - current); field += velocity;
-    float3 velocity = waveVelocity[index];
+    // 파동 방정식
+    float roughnessVal = waveVelocity[index].w;
+    float3 velocity = waveVelocity[index].xyz;
     velocity += c * (neighborAvg - currentWave);
     velocity *= damping;
 
-    waveVelocity[index] = velocity;
+    // 표면 셀이면 roughness에 따라 감쇠 + 에너지 누적
+    if (currentField.w > 0.0)
+    {
+        float reflectFactor = 1.0 - roughnessVal * 0.8;
+        velocity *= reflectFactor;
+    }
+
+    waveVelocity[index] = float4(velocity, roughnessVal);
     waveField[index] = float4(currentWave + velocity, currentField.w);
 
-    // 태양광 평면파 주입: 격자 상단(y=GRID_SIZE-1)에서 아래 방향으로 (백색광 = RGB 동일)
-    if (coord.y == GRID_SIZE - 1)
+    // 태양광 평면파 주입: 격자 상단(y=0)에서 아래 방향으로
+    if (coord.y == 0)
     {
         float phase = scene.light.time * scene.light.frequency;
         float wave = sin(phase) * 0.02;
         waveField[index] = float4(currentWave + velocity + float3(wave, wave, wave), currentField.w);
     }
-
 }

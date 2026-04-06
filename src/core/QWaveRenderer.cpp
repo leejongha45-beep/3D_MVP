@@ -63,16 +63,20 @@ void QWaveRenderer::initialize()
 	vulkanCommandPoolRef = new VulkanCommandPool(vulkanDeviceRef, swapChainRef);
 	renderObjects.emplace_back(vulkanCommandPoolRef);
 
-	for (auto& pRenderObject : renderObjects)
+	for (size_t i = 0; i < renderObjects.size(); ++i)
 	{
-		if (ENSURE(pRenderObject))
+		std::cout << "[Renderer] Creating object " << i << "/" << renderObjects.size() << std::endl;
+		if (ENSURE(renderObjects[i]))
 		{
-			pRenderObject->create();
+			renderObjects[i]->create();
 		}
 	}
 
+	std::cout << "[Renderer] createSyncObjects..." << std::endl;
 	createSyncObjects();
+	std::cout << "[Renderer] markStaticObjects..." << std::endl;
 	markStaticObjects();
+	std::cout << "[Renderer] precomputeWaveSimulation..." << std::endl;
 	precomputeWaveSimulation();
 }
 
@@ -144,7 +148,7 @@ void QWaveRenderer::update(float deltaSeconds)
 	{
 		pCommandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, **swapChainRef->getWaveSimulationPipelineInst());
 		pCommandBuffer->bindDescriptorSets(vk::PipelineBindPoint::eCompute, **swapChainRef->getPipelineLayoutInst(), 0, **swapChainRef->getDescriptorSetInst(), {});
-		pCommandBuffer->dispatch(128 / 8, 128 / 8, 128 / 8);
+		pCommandBuffer->dispatch(1024 / 16, 1024 / 16, 1);
 
 		vk::MemoryBarrier2 computeBarrier{
 			.srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader,
@@ -354,7 +358,7 @@ void QWaveRenderer::markStaticObjects()
 	const auto& vertices = pPlane->getVertices();
 	for (const auto& vertex : vertices)
 	{
-		vulkanStorageBufferRef->markStaticObject(vertex.position, vertex.reflectSpectrum);
+		vulkanStorageBufferRef->markStaticObject(vertex.position, vertex.reflectSpectrum, vertex.roughness);
 	}
 
 	const auto& cubes = worldRef->getCubesRef();
@@ -366,7 +370,7 @@ void QWaveRenderer::markStaticObjects()
 		const auto& cubeVertices = cube->getVertices();
 		for (const auto& vertex : cubeVertices)
 		{
-			vulkanStorageBufferRef->markStaticObject(vertex.position, vertex.reflectSpectrum);
+			vulkanStorageBufferRef->markStaticObject(vertex.position, vertex.reflectSpectrum, vertex.roughness);
 		}
 	}
 }
@@ -395,8 +399,8 @@ void QWaveRenderer::precomputeWaveSimulation()
 	// 초기 SceneData 업데이트 (시간값 포함)
 	updateSceneData();
 
-	constexpr int totalSteps = 1000;
-	constexpr int stepsPerBatch = 100;
+	constexpr int totalSteps = 7000;
+	constexpr int stepsPerBatch = 10;
 	constexpr int batchCount = totalSteps / stepsPerBatch;
 
 	std::cout << "[WaveSimulation] Precomputing " << totalSteps << " steps..." << std::endl;
@@ -412,7 +416,7 @@ void QWaveRenderer::precomputeWaveSimulation()
 
 		for (int step = 0; step < stepsPerBatch; ++step)
 		{
-			pCommandBuffer->dispatch(128 / 8, 128 / 8, 128 / 8);
+			pCommandBuffer->dispatch(1024 / 16, 1024 / 16, 1);
 
 			if (step < stepsPerBatch - 1)
 			{

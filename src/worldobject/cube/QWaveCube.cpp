@@ -1,7 +1,7 @@
 ﻿#include "QWaveCube.h"
 
-QWaveCube::QWaveCube(const glm::vec3& position, const glm::vec3& size, const glm::vec3& reflectSpectrum)
-	: position(position), size(size), reflectSpectrum(reflectSpectrum)
+QWaveCube::QWaveCube(const glm::vec3& position, const glm::vec3& size, const glm::vec3& reflectSpectrum, float roughness)
+	: position(position), size(size), reflectSpectrum(reflectSpectrum), roughness(roughness)
 {
 }
 
@@ -27,6 +27,7 @@ void QWaveCube::initialize()
 				VertexData vertex{};
 				vertex.position = glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 				vertex.reflectSpectrum = reflectSpectrum;
+				vertex.roughness = roughness;
 				verticesInst.push_back(vertex);
 			}
 		}

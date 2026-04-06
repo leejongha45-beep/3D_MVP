@@ -24,6 +24,7 @@ void QWavePlane::initialize()
 			VertexData vertex{};
 			vertex.position = glm::vec3(static_cast<float>(x), static_cast<float>(gridY), static_cast<float>(z));
 			vertex.reflectSpectrum = reflectSpectrum;
+			vertex.roughness = roughness;
 			verticesInst.push_back(vertex);
 		}
 	}
