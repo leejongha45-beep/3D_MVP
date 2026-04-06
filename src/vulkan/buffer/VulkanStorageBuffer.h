@@ -15,8 +15,9 @@ public:
 
 	const vk::raii::Buffer* getFieldBufferInst() const { return &fieldBufferInst; }
 	const vk::raii::Buffer* getVelocityBufferInst() const { return &velocityBufferInst; }
-	vk::DeviceSize getFieldBufferSize() const { return GRID_TOTAL * sizeof(float) * 4; }
-	vk::DeviceSize getVelocityBufferSize() const { return GRID_TOTAL * sizeof(float) * 4; }
+	static constexpr uint32_t PLANE_COUNT = 3;
+	vk::DeviceSize getFieldBufferSize() const { return GRID_TOTAL * PLANE_COUNT * sizeof(float) * 4; }
+	vk::DeviceSize getVelocityBufferSize() const { return GRID_TOTAL * PLANE_COUNT * sizeof(float) * 4; }
 	uint32_t getGridSize() const { return GRID_SIZE; }
 
 	void markStaticObject(const glm::vec3& worldPosition, const glm::vec3& reflectSpectrum, float roughness);
@@ -32,6 +33,7 @@ private:
 
 	static constexpr uint32_t GRID_SIZE = 1024;
 	static constexpr uint32_t GRID_TOTAL = GRID_SIZE * GRID_SIZE;
+	static constexpr uint32_t PLANE_COUNT_INTERNAL = 3; // xz, xy, yz
 
 	vk::raii::Buffer fieldBufferInst = nullptr;
 	vk::raii::DeviceMemory fieldMemoryInst = nullptr;

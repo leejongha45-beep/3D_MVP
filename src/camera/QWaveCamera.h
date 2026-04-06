@@ -33,15 +33,15 @@ private:
 
 	GLFWwindow* windowRef = nullptr;
 
-	glm::vec3 position = glm::vec3(0.0f, 30.0f, -40.0f);
-	glm::vec3 target = glm::vec3(0.0f, 5.0f, 0.0f);
-	glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+	glm::vec3 position = glm::vec3(0.0f, -80.0f, 60.0f);
+	glm::vec3 target = glm::vec3(0.0f, 0.0f, 5.0f);
+	glm::vec3 up = glm::vec3(0.0f, 0.0f, 1.0f);
 	glm::vec3 forward = glm::vec3(0.0f, 0.0f, -1.0f);
 	glm::vec3 right = glm::vec3(1.0f, 0.0f, 0.0f);
 
 	float yaw = -90.0f;
 	float pitch = 0.0f;
-	float moveSpeed = 3.0f;
+	float moveSpeed = 30.0f;
 	float mouseSensitivity = 0.15f;
 	float fov = 60.0f;
 

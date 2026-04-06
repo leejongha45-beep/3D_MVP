@@ -331,7 +331,7 @@ void QWaveRenderer::updateSceneData()
 	sceneData.camera.fov      = pCamera->getFov();
 
 	sceneData.plane.position = pPlane->getPosition();
-	sceneData.plane.normal   = glm::vec3(0.0f, 1.0f, 0.0f);
+	sceneData.plane.normal   = glm::vec3(0.0f, 0.0f, 1.0f);
 	sceneData.plane.color    = glm::vec3(0.4f, 0.4f, 0.4f);
 	sceneData.plane.size     = pPlane->getSize();
 

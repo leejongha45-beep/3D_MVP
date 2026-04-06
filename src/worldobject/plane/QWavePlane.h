@@ -27,7 +27,7 @@ public:
 	void setRoughness(float value) { roughness = value; }
 
 private:
-	glm::vec3 position = glm::vec3(0.0f, 5.0f, 0.0f);
+	glm::vec3 position = glm::vec3(0.0f, 0.0f, 5.0f);
 	glm::vec3 reflectSpectrum = glm::vec3(0.4f, 0.4f, 0.4f);
 	float roughness = 0.8f;
 	float size = 100.0f;

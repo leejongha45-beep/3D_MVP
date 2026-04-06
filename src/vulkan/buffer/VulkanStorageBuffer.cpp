@@ -31,9 +31,9 @@ void VulkanStorageBuffer::create()
 		return;
 
 	// field: vec4 (xyz=RGB파동, w=반사계수) × 128^3
-	createBuffer(*pDevice, *pPhysicalDevice, GRID_TOTAL * sizeof(float) * 4, fieldBufferInst, fieldMemoryInst, fieldMappedInst);
-	// velocity: vec4 (xyz=RGB속도, w=roughness)
-	createBuffer(*pDevice, *pPhysicalDevice, GRID_TOTAL * sizeof(float) * 4, velocityBufferInst, velocityMemoryInst, velocityMappedInst);
+	// 3평면(xz, xy, yz) × 1024x1024
+	createBuffer(*pDevice, *pPhysicalDevice, static_cast<vk::DeviceSize>(GRID_TOTAL) * PLANE_COUNT_INTERNAL * sizeof(float) * 4, fieldBufferInst, fieldMemoryInst, fieldMappedInst);
+	createBuffer(*pDevice, *pPhysicalDevice, static_cast<vk::DeviceSize>(GRID_TOTAL) * PLANE_COUNT_INTERNAL * sizeof(float) * 4, velocityBufferInst, velocityMemoryInst, velocityMappedInst);
 
 	clearGrid();
 }
@@ -76,8 +76,8 @@ void VulkanStorageBuffer::clearGrid()
 	if (!ENSURE(velocityMappedInst))
 		return;
 
-	memset(fieldMappedInst, 0, static_cast<size_t>(GRID_TOTAL) * sizeof(float) * 4);
-	memset(velocityMappedInst, 0, static_cast<size_t>(GRID_TOTAL) * sizeof(float) * 4);
+	memset(fieldMappedInst, 0, static_cast<size_t>(GRID_TOTAL) * PLANE_COUNT_INTERNAL * sizeof(float) * 4);
+	memset(velocityMappedInst, 0, static_cast<size_t>(GRID_TOTAL) * PLANE_COUNT_INTERNAL * sizeof(float) * 4);
 }
 
 void VulkanStorageBuffer::markStaticObject(const glm::vec3& worldPosition, const glm::vec3& reflectSpectrum, float roughness)
@@ -87,25 +87,41 @@ void VulkanStorageBuffer::markStaticObject(const glm::vec3& worldPosition, const
 	if (!ENSURE(velocityMappedInst))
 		return;
 
-	uint32_t index = worldToGridIndex(worldPosition);
-	if (index == UINT32_MAX)
-		return;
-
-	// field[index] = vec4(0, 0, 0, 투명도)
+	float reflectCoeff = (reflectSpectrum.r + reflectSpectrum.g + reflectSpectrum.b) / 3.0f;
 	float* fieldData = static_cast<float*>(fieldMappedInst);
-	uint32_t fieldOffset = index * 4;
-	fieldData[fieldOffset + 0] = 0.0f;
-	fieldData[fieldOffset + 1] = 0.0f;
-	fieldData[fieldOffset + 2] = 0.0f;
-	fieldData[fieldOffset + 3] = (reflectSpectrum.r + reflectSpectrum.g + reflectSpectrum.b) / 3.0f;
-
-	// velocity[index] = vec4(0, 0, 0, roughness)
 	float* velocityData = static_cast<float*>(velocityMappedInst);
-	uint32_t velOffset = index * 4;
-	velocityData[velOffset + 0] = 0.0f;
-	velocityData[velOffset + 1] = 0.0f;
-	velocityData[velOffset + 2] = 0.0f;
-	velocityData[velOffset + 3] = roughness;
+
+	int half = static_cast<int>(GRID_SIZE / 2);
+
+	// 평면 0: xy (위에서 아래, z축이 높이)
+	int xy_x = static_cast<int>(worldPosition.x) + half;
+	int xy_y = static_cast<int>(worldPosition.y) + half;
+	if (xy_x >= 0 && xy_x < static_cast<int>(GRID_SIZE) && xy_y >= 0 && xy_y < static_cast<int>(GRID_SIZE))
+	{
+		uint32_t idx = (0 * GRID_TOTAL + xy_y * GRID_SIZE + xy_x) * 4;
+		fieldData[idx + 3] = reflectCoeff;
+		velocityData[idx + 3] = roughness;
+	}
+
+	// 평면 1: xz (앞에서 뒤)
+	int xz_x = static_cast<int>(worldPosition.x) + half;
+	int xz_y = static_cast<int>(worldPosition.z) + half;
+	if (xz_x >= 0 && xz_x < static_cast<int>(GRID_SIZE) && xz_y >= 0 && xz_y < static_cast<int>(GRID_SIZE))
+	{
+		uint32_t idx = (1 * GRID_TOTAL + xz_y * GRID_SIZE + xz_x) * 4;
+		fieldData[idx + 3] = reflectCoeff;
+		velocityData[idx + 3] = roughness;
+	}
+
+	// 평면 2: yz (옆에서)
+	int yz_x = static_cast<int>(worldPosition.z) + half;
+	int yz_y = static_cast<int>(worldPosition.y) + half;
+	if (yz_x >= 0 && yz_x < static_cast<int>(GRID_SIZE) && yz_y >= 0 && yz_y < static_cast<int>(GRID_SIZE))
+	{
+		uint32_t idx = (2 * GRID_TOTAL + yz_y * GRID_SIZE + yz_x) * 4;
+		fieldData[idx + 3] = reflectCoeff;
+		velocityData[idx + 3] = roughness;
+	}
 }
 
 uint32_t VulkanStorageBuffer::worldToGridIndex(const glm::vec3& worldPosition) const

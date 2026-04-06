@@ -17,8 +17,8 @@ void QWaveCamera::initialize()
 {
 	// 초기 방향 벡터를 position → target에서 계산
 	glm::vec3 direction = glm::normalize(target - position);
-	yaw = glm::degrees(std::atan2(direction.z, direction.x));
-	pitch = glm::degrees(std::asin(direction.y));
+	yaw = glm::degrees(std::atan2(direction.y, direction.x));
+	pitch = glm::degrees(std::asin(direction.z));
 	updateVectors();
 }
 
@@ -82,7 +82,7 @@ void QWaveCamera::processMouse(float deltaSeconds)
 			lastMouseY = mouseY;
 		}
 
-		float offsetX = static_cast<float>(mouseX - lastMouseX) * mouseSensitivity;
+		float offsetX = static_cast<float>(lastMouseX - mouseX) * mouseSensitivity;
 		float offsetY = static_cast<float>(lastMouseY - mouseY) * mouseSensitivity;
 
 		lastMouseX = mouseX;
@@ -116,11 +116,11 @@ void QWaveCamera::updateVectors()
 	float pitchRad = glm::radians(pitch);
 
 	forward.x = std::cos(yawRad) * std::cos(pitchRad);
-	forward.y = std::sin(pitchRad);
-	forward.z = std::sin(yawRad) * std::cos(pitchRad);
+	forward.y = std::sin(yawRad) * std::cos(pitchRad);
+	forward.z = std::sin(pitchRad);
 	forward = glm::normalize(forward);
 
-	right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+	right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 0.0f, 1.0f)));
 	up = glm::normalize(glm::cross(right, forward));
 }
 

@@ -13,14 +13,14 @@ void QWaveCube::initialize()
 {
 	int startX = static_cast<int>(position.x - size.x * 0.5f);
 	int endX = static_cast<int>(position.x + size.x * 0.5f);
-	int startY = static_cast<int>(position.y);
-	int endY = static_cast<int>(position.y + size.y);
-	int startZ = static_cast<int>(position.z - size.z * 0.5f);
-	int endZ = static_cast<int>(position.z + size.z * 0.5f);
+	int startY = static_cast<int>(position.y - size.y * 0.5f);
+	int endY = static_cast<int>(position.y + size.y * 0.5f);
+	int startZ = static_cast<int>(position.z);
+	int endZ = static_cast<int>(position.z + size.z);
 
-	for (int y = startY; y <= endY; ++y)
+	for (int z = startZ; z <= endZ; ++z)
 	{
-		for (int z = startZ; z <= endZ; ++z)
+		for (int y = startY; y <= endY; ++y)
 		{
 			for (int x = startX; x <= endX; ++x)
 			{

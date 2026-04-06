@@ -18,6 +18,8 @@ public:
 	void release() override;
 
 	const std::vector<VertexData>& getVertices() const { return verticesInst; }
+	glm::vec3 getPosition() const { return position; }
+	glm::vec3 getSize() const { return size; }
 
 private:
 	glm::vec3 position;
