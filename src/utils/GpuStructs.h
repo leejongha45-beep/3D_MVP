@@ -5,9 +5,10 @@
 struct CameraData
 {
 	alignas(16) glm::vec3 position;
-	alignas(16) glm::vec3 target;
+	alignas(16) glm::vec3 forward;
 	alignas(16) glm::vec3 up;
 	float fov;
+	float _pad0[3];
 };
 
 struct PlaneData
@@ -16,14 +17,16 @@ struct PlaneData
 	alignas(16) glm::vec3 normal;
 	alignas(16) glm::vec3 color;
 	float size;
+	float _pad0[3];
 };
 
 struct LightData
 {
 	alignas(16) glm::vec3 direction;
-	alignas(16) glm::vec3 color;
-	float intensity;
-	float ambient;
+	float frequency;
+	float propagationSpeed;
+	float damping;
+	float _pad0[2];
 };
 
 struct SceneData
@@ -32,3 +35,8 @@ struct SceneData
 	PlaneData plane;
 	LightData light;
 };
+
+static_assert(sizeof(CameraData) == 64, "CameraData size mismatch");
+static_assert(sizeof(PlaneData) == 64, "PlaneData size mismatch");
+static_assert(sizeof(LightData) == 32, "LightData size mismatch");
+static_assert(sizeof(SceneData) == 160, "SceneData size mismatch");

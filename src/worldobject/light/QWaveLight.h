@@ -11,18 +11,18 @@ public:
 	~QWaveLight();
 
 	glm::vec3 getDirection() const { return direction; }
-	glm::vec3 getColor() const { return color; }
-	float getIntensity() const { return intensity; }
-	float getAmbient() const { return ambient; }
+	float getFrequency() const { return frequency; }
+	float getPropagationSpeed() const { return propagationSpeed; }
+	float getDamping() const { return damping; }
 
 	void setDirection(const glm::vec3& value) { direction = value; }
-	void setColor(const glm::vec3& value) { color = value; }
-	void setIntensity(float value) { intensity = value; }
-	void setAmbient(float value) { ambient = value; }
+	void setFrequency(float value) { frequency = value; }
+	void setPropagationSpeed(float value) { propagationSpeed = value; }
+	void setDamping(float value) { damping = value; }
 
 private:
-	glm::vec3 direction = glm::normalize(glm::vec3(1.0f, 2.0f, 3.0f));
-	glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
-	float intensity = 0.85f;
-	float ambient = 0.15f;
+	glm::vec3 direction = glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f));
+	float frequency = 0.25f;
+	float propagationSpeed = 0.23f;
+	float damping = 0.9988f;
 };

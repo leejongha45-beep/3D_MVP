@@ -25,7 +25,15 @@ void VulkanSurface::create()
 
 	VkSurfaceKHR rawSurface = VK_NULL_HANDLE;
 	VkResult result = glfwCreateWindowSurface(**pInstance, windowRef, nullptr, &rawSurface);
-	assert(result == VK_SUCCESS);
+	if (!ENSURE(result == VK_SUCCESS))
+	{
+		std::cerr << "[VulkanSurface] Failed to create window surface, VkResult: " << result << std::endl;
+		return;
+	}
 
 	surfaceInst = vk::raii::SurfaceKHR(*pInstance, rawSurface);
+	if (!ENSURE(*surfaceInst))
+	{
+		std::cerr << "[VulkanSurface] Surface handle is null" << std::endl;
+	}
 }

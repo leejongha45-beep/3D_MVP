@@ -60,25 +60,23 @@ set_property(TARGET 3D_MVP PROPERTY CXX_STANDARD 20)
 # Slang 셰이더 컴파일
 find_program(SLANGC_EXECUTABLE slangc HINTS "$ENV{VULKAN_SDK}/bin")
 
-function (add_slang_shader_target TARGET)
-  cmake_parse_arguments ("SHADER" "" "" "SOURCES" ${ARGN})
+function (add_slang_shader TARGET SOURCE OUTPUT_NAME)
   set (SHADERS_DIR ${CMAKE_CURRENT_LIST_DIR}/shader)
-  set (ENTRY_POINTS -entry main)
   add_custom_command (
           OUTPUT ${SHADERS_DIR}
           COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
   )
   add_custom_command (
-          OUTPUT  ${SHADERS_DIR}/slang.spv
-          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
+          OUTPUT  ${SHADERS_DIR}/${OUTPUT_NAME}
+          COMMAND ${SLANGC_EXECUTABLE} ${SOURCE} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -entry main -o ${OUTPUT_NAME}
           WORKING_DIRECTORY ${SHADERS_DIR}
-          DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
-          COMMENT "Compiling Slang Shaders"
+          DEPENDS ${SHADERS_DIR} ${SOURCE}
+          COMMENT "Compiling ${OUTPUT_NAME}"
           VERBATIM
   )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
+  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/${OUTPUT_NAME})
 endfunction()
 
-set(SHADER_SLANG_SOURCES ${CMAKE_CURRENT_LIST_DIR}/shader/shader.slang)
-add_slang_shader_target(3D_MVPShaders SOURCES ${SHADER_SLANG_SOURCES})
-add_dependencies(3D_MVP 3D_MVPShaders)
+add_slang_shader(WaveSimulationShader ${CMAKE_CURRENT_LIST_DIR}/shader/wave_simulation.slang wave_simulation.spv)
+add_slang_shader(RenderShader ${CMAKE_CURRENT_LIST_DIR}/shader/render.slang render.spv)
+add_dependencies(3D_MVP WaveSimulationShader RenderShader)

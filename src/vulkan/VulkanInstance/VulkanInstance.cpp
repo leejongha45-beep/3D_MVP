@@ -20,12 +20,34 @@ void VulkanInstance::create()
 
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-	assert(glfwExtensions);
+	if (!ENSURE(glfwExtensions))
+		return;
 
 	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
 	if (enableValidationLayers)
 	{
 		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+		// Validation Layer 지원 여부 확인
+		auto availableLayers = vk::enumerateInstanceLayerProperties();
+		for (const char* layerName : validationLayers)
+		{
+			bool found = false;
+			for (const auto& layer : availableLayers)
+			{
+				if (strcmp(layerName, layer.layerName) == 0)
+				{
+					found = true;
+					break;
+				}
+			}
+			if (!ENSURE(found))
+			{
+				std::cerr << "[VulkanInstance] Validation layer not found: " << layerName << std::endl;
+				return;
+			}
+		}
 	}
 
 	vk::InstanceCreateInfo instanceCreateInfo{
@@ -37,6 +59,8 @@ void VulkanInstance::create()
 	};
 
 	instanceInst = vk::raii::Instance(contextInst, instanceCreateInfo);
+	if (!ENSURE(*instanceInst))
+		return;
 
 	if (enableValidationLayers)
 	{
@@ -57,6 +81,10 @@ void VulkanInstance::setupDebugMessenger()
 	};
 
 	debugMessengerInst = vk::raii::DebugUtilsMessengerEXT(instanceInst, debugCreateInfo);
+	if (!ENSURE(*debugMessengerInst))
+	{
+		std::cerr << "[VulkanInstance] Failed to create debug messenger" << std::endl;
+	}
 }
 
 vk::Bool32 VulkanInstance::debugCallback(
@@ -65,12 +93,13 @@ vk::Bool32 VulkanInstance::debugCallback(
 	const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
 	void* pUserData)
 {
+	if (!ENSURE(pCallbackData))
+		return VK_FALSE;
+
 	if (messageSeverity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
 	{
-		if (ENSURE(pCallbackData))
-		{
-			std::cerr << "[Vulkan Validation] " << pCallbackData->pMessage << std::endl;
-		}
+		std::cerr << "[Vulkan Validation] " << pCallbackData->pMessage << std::endl;
 	}
+
 	return VK_FALSE;
 }

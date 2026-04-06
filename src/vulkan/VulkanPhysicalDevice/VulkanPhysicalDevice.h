@@ -6,7 +6,7 @@
 class VulkanPhysicalDevice : public QRenderObject
 {
 public:
-	VulkanPhysicalDevice(class VulkanInstance* vulkanInstanceRef);
+	VulkanPhysicalDevice(class VulkanInstance* vulkanInstanceRef, class VulkanSurface* vulkanSurfaceRef);
 	virtual ~VulkanPhysicalDevice() override;
 
 	void create() override;
@@ -18,7 +18,9 @@ private:
 	bool hasRequiredQueueFamilies(const vk::raii::PhysicalDevice& device) const;
 	bool hasRequiredFeatures(const vk::raii::PhysicalDevice& device) const;
 	bool hasRequiredExtensions(const vk::raii::PhysicalDevice& device) const;
+	bool hasSurfacePresentSupport(const vk::raii::PhysicalDevice& device) const;
 
 	const class VulkanInstance* vulkanInstanceRef = nullptr;
+	const class VulkanSurface* vulkanSurfaceRef = nullptr;
 	vk::raii::PhysicalDevice physicalDeviceInst = nullptr;
 };
