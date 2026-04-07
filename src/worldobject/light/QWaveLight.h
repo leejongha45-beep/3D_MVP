@@ -21,8 +21,8 @@ public:
 	void setDamping(float value) { damping = value; }
 
 private:
-	glm::vec3 direction = glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f));
+	glm::vec3 direction = glm::normalize(glm::vec3(0.85f, 0.15f, 0.5f));
 	float frequency = 0.25f;
-	float propagationSpeed = 0.23f;
+	float propagationSpeed = 0.7f;
 	float damping = 0.9988f;
 };

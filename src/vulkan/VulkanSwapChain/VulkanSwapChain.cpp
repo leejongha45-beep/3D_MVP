@@ -212,34 +212,19 @@ uint32_t VulkanSwapChain::findMemoryType(
 	return UINT32_MAX;
 }
 
-// binding 0: Storage Image, binding 1: Uniform Buffer, binding 2: field Storage Buffer, binding 3: velocity Storage Buffer
+// SoA: 0=StorageImage, 1=UBO, 2=fieldXYZ, 3=fieldW, 4=velocityXYZ, 5=velocityW, 6=accumCounter
 void VulkanSwapChain::createDescriptorSetLayout(const vk::raii::Device& device)
 {
-	std::array<vk::DescriptorSetLayoutBinding, 4> bindings = {
-		vk::DescriptorSetLayoutBinding{
-			.binding         = 0,
-			.descriptorType  = vk::DescriptorType::eStorageImage,
-			.descriptorCount = 1,
-			.stageFlags      = vk::ShaderStageFlagBits::eCompute
-		},
-		vk::DescriptorSetLayoutBinding{
-			.binding         = 1,
-			.descriptorType  = vk::DescriptorType::eUniformBuffer,
-			.descriptorCount = 1,
-			.stageFlags      = vk::ShaderStageFlagBits::eCompute
-		},
-		vk::DescriptorSetLayoutBinding{
-			.binding         = 2,
-			.descriptorType  = vk::DescriptorType::eStorageBuffer,
-			.descriptorCount = 1,
-			.stageFlags      = vk::ShaderStageFlagBits::eCompute
-		},
-		vk::DescriptorSetLayoutBinding{
-			.binding         = 3,
-			.descriptorType  = vk::DescriptorType::eStorageBuffer,
-			.descriptorCount = 1,
-			.stageFlags      = vk::ShaderStageFlagBits::eCompute
-		}
+	std::array<vk::DescriptorSetLayoutBinding, 9> bindings = {
+		vk::DescriptorSetLayoutBinding{.binding = 0, .descriptorType = vk::DescriptorType::eStorageImage, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 2, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 3, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 4, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 5, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 6, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 7, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
+		vk::DescriptorSetLayoutBinding{.binding = 8, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute}
 	};
 
 	vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{
@@ -323,11 +308,11 @@ void VulkanSwapChain::createComputePipelines(const vk::raii::Device& device)
 // DescriptorPool 생성 + 리소스 바인딩
 void VulkanSwapChain::createDescriptorPoolAndSet(const vk::raii::Device& device)
 {
-	// Pool: StorageImage 1개 + UniformBuffer 1개 + StorageBuffer 2개
+	// Pool: StorageImage 1 + UBO 1 + StorageBuffer 4 (SoA)
 	std::array<vk::DescriptorPoolSize, 3> poolSizes = {
 		vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageImage, .descriptorCount = 1},
 		vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1},
-		vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = 2}
+		vk::DescriptorPoolSize{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = 7}
 	};
 
 	vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{
@@ -371,47 +356,52 @@ void VulkanSwapChain::createDescriptorPoolAndSet(const vk::raii::Device& device)
 		.range  = vulkanUniformBufferRef->getBufferSize()
 	};
 
-	vk::DescriptorBufferInfo fieldBufferInfo{
-		.buffer = **(vulkanStorageBufferRef->getFieldBufferInst()),
+	vk::DescriptorBufferInfo fieldXYZInfo{
+		.buffer = **(vulkanStorageBufferRef->getFieldXYZBufferInst()),
 		.offset = 0,
-		.range  = vulkanStorageBufferRef->getFieldBufferSize()
+		.range  = vulkanStorageBufferRef->getFieldXYZBufferSize()
+	};
+	vk::DescriptorBufferInfo fieldWInfo{
+		.buffer = **(vulkanStorageBufferRef->getFieldWBufferInst()),
+		.offset = 0,
+		.range  = vulkanStorageBufferRef->getFieldWBufferSize()
+	};
+	vk::DescriptorBufferInfo velocityXYZInfo{
+		.buffer = **(vulkanStorageBufferRef->getVelocityXYZBufferInst()),
+		.offset = 0,
+		.range  = vulkanStorageBufferRef->getVelocityXYZBufferSize()
+	};
+	vk::DescriptorBufferInfo velocityWInfo{
+		.buffer = **(vulkanStorageBufferRef->getVelocityWBufferInst()),
+		.offset = 0,
+		.range  = vulkanStorageBufferRef->getVelocityWBufferSize()
+	};
+	vk::DescriptorBufferInfo accumCounterInfo{
+		.buffer = **(vulkanStorageBufferRef->getAccumCounterBufferInst()),
+		.offset = 0,
+		.range  = vulkanStorageBufferRef->getAccumCounterBufferSize()
+	};
+	vk::DescriptorBufferInfo normalInfo{
+		.buffer = **(vulkanStorageBufferRef->getNormalBufferInst()),
+		.offset = 0,
+		.range  = vulkanStorageBufferRef->getNormalBufferSize()
+	};
+	vk::DescriptorBufferInfo reflectedFieldXYZInfo{
+		.buffer = **(vulkanStorageBufferRef->getReflectedFieldXYZBufferInst()),
+		.offset = 0,
+		.range  = vulkanStorageBufferRef->getReflectedFieldXYZBufferSize()
 	};
 
-	vk::DescriptorBufferInfo velocityBufferInfo{
-		.buffer = **(vulkanStorageBufferRef->getVelocityBufferInst()),
-		.offset = 0,
-		.range  = vulkanStorageBufferRef->getVelocityBufferSize()
-	};
-
-	std::array<vk::WriteDescriptorSet, 4> writeDescriptorSets = {
-		vk::WriteDescriptorSet{
-			.dstSet          = *descriptorSetInst,
-			.dstBinding      = 0,
-			.descriptorCount = 1,
-			.descriptorType  = vk::DescriptorType::eStorageImage,
-			.pImageInfo      = &storageImageInfo
-		},
-		vk::WriteDescriptorSet{
-			.dstSet          = *descriptorSetInst,
-			.dstBinding      = 1,
-			.descriptorCount = 1,
-			.descriptorType  = vk::DescriptorType::eUniformBuffer,
-			.pBufferInfo     = &uniformBufferInfo
-		},
-		vk::WriteDescriptorSet{
-			.dstSet          = *descriptorSetInst,
-			.dstBinding      = 2,
-			.descriptorCount = 1,
-			.descriptorType  = vk::DescriptorType::eStorageBuffer,
-			.pBufferInfo     = &fieldBufferInfo
-		},
-		vk::WriteDescriptorSet{
-			.dstSet          = *descriptorSetInst,
-			.dstBinding      = 3,
-			.descriptorCount = 1,
-			.descriptorType  = vk::DescriptorType::eStorageBuffer,
-			.pBufferInfo     = &velocityBufferInfo
-		}
+	std::array<vk::WriteDescriptorSet, 9> writeDescriptorSets = {
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageImage, .pImageInfo = &storageImageInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .pBufferInfo = &uniformBufferInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 2, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &fieldXYZInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 3, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &fieldWInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 4, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &velocityXYZInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 5, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &velocityWInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 6, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &accumCounterInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 7, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &normalInfo},
+		vk::WriteDescriptorSet{.dstSet = *descriptorSetInst, .dstBinding = 8, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .pBufferInfo = &reflectedFieldXYZInfo}
 	};
 
 	device.updateDescriptorSets(writeDescriptorSets, nullptr);

@@ -1,4 +1,4 @@
-// QuantumWave Renderer - 3평면 파동 에너지 쿼리 렌더링
+// QuantumWave Renderer - 렌더링
 
 struct CameraData
 {
@@ -46,13 +46,29 @@ RWTexture2D<float4> outputImage;
 ConstantBuffer<SceneData> scene;
 
 [[vk::binding(2, 0)]]
-RWStructuredBuffer<float4> waveField;
+RWStructuredBuffer<float3> fieldXYZ;
 
 [[vk::binding(3, 0)]]
-RWStructuredBuffer<float4> waveVelocity;
+RWStructuredBuffer<float> fieldW;
 
-static const uint GRID_SIZE = 1024;
+[[vk::binding(4, 0)]]
+RWStructuredBuffer<float3> velocityXYZ;
+
+[[vk::binding(5, 0)]]
+RWStructuredBuffer<float> velocityW;
+
+[[vk::binding(6, 0)]]
+RWStructuredBuffer<float> accumCounter;
+
+[[vk::binding(7, 0)]]
+RWStructuredBuffer<float4> normalBuffer;
+
+[[vk::binding(8, 0)]]
+RWStructuredBuffer<float3> reflectedFieldXYZ;
+
+static const uint GRID_SIZE = 256;
 static const uint GRID_TOTAL = GRID_SIZE * GRID_SIZE;
+static const float CELL_SIZE = 1.0;
 
 static const int half_grid = int(GRID_SIZE) / 2;
 
@@ -65,53 +81,6 @@ bool isInGrid(int2 coord)
 {
     return coord.x >= 0 && coord.x < int(GRID_SIZE)
         && coord.y >= 0 && coord.y < int(GRID_SIZE);
-}
-
-// 3평면에서 에너지 쿼리 후 합산
-float3 queryEnergy(float3 worldPos, float3 normal)
-{
-    float3 energy = float3(0.0, 0.0, 0.0);
-    float absNx = abs(normal.x);
-    float absNy = abs(normal.y);
-    float absNz = abs(normal.z);
-
-    float3 eXZ = float3(0.0, 0.0, 0.0);
-    float3 eXY = float3(0.0, 0.0, 0.0);
-    float3 eYZ = float3(0.0, 0.0, 0.0);
-
-    // xy 평면 (위에서 아래, z축이 높이)
-    int2 xyCoord = int2(int(worldPos.x) + half_grid, int(worldPos.y) + half_grid);
-    if (isInGrid(xyCoord))
-        eXY = abs(waveField[toIndex(0, uint2(xyCoord))].xyz);
-
-    // xz 평면 (앞에서 뒤)
-    int2 xzCoord = int2(int(worldPos.x) + half_grid, int(worldPos.z) + half_grid);
-    if (isInGrid(xzCoord))
-        eXZ = abs(waveField[toIndex(1, uint2(xzCoord))].xyz);
-
-    // yz 평면 (옆에서)
-    int2 yzCoord = int2(int(worldPos.z) + half_grid, int(worldPos.y) + half_grid);
-    if (isInGrid(yzCoord))
-        eYZ = abs(waveField[toIndex(2, uint2(yzCoord))].xyz);
-
-    // 법선 방향에 따라 가중치 결정
-    if (absNz > absNx && absNz > absNy)
-    {
-        // 윗면/바닥면 (법선 z): xy 0.5 + yz 0.5
-        energy = eXY * 0.5 + eYZ * 0.5;
-    }
-    else if (absNy > absNx)
-    {
-        // 앞/뒷면 (법선 y): xz 0.5 + xy 0.5
-        energy = eXZ * 0.5 + eXY * 0.5;
-    }
-    else
-    {
-        // 옆면 (법선 x): yz 0.5 + xz 0.5
-        energy = eYZ * 0.5 + eXZ * 0.5;
-    }
-
-    return energy;
 }
 
 // 레이-AABB 교차 + 법선
@@ -135,8 +104,6 @@ bool rayBoxIntersect(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxM
     if (tNear > tFar || tFar < 0.0)
         return false;
 
-    // 법선 계산
-    normal = float3(0, 0, 0);
     if (tMin.x > tMin.y && tMin.x > tMin.z)
         normal = float3(-sign(rayDir.x), 0, 0);
     else if (tMin.y > tMin.z)
@@ -145,6 +112,44 @@ bool rayBoxIntersect(float3 rayOrigin, float3 rayDir, float3 boxMin, float3 boxM
         normal = float3(0, 0, -sign(rayDir.z));
 
     return true;
+}
+
+// 3평면에서 direct + reflected wave 합산
+float3 queryEnergy(float3 worldPos)
+{
+    float3 energy = float3(0.0, 0.0, 0.0);
+
+    // xy 평면
+    int2 xyCoord = int2(int(worldPos.x / CELL_SIZE) + half_grid, int(worldPos.y / CELL_SIZE) + half_grid);
+    if (isInGrid(xyCoord))
+    {
+        uint idx = toIndex(0, uint2(xyCoord));
+        float3 direct = abs(fieldXYZ[idx]);           // 직사광
+        float3 reflected = abs(reflectedFieldXYZ[idx]); // 반사광
+        energy += direct + reflected;
+    }
+
+    // xz 평면
+    int2 xzCoord = int2(int(worldPos.x / CELL_SIZE) + half_grid, int(worldPos.z / CELL_SIZE) + half_grid);
+    if (isInGrid(xzCoord))
+    {
+        uint idx = toIndex(1, uint2(xzCoord));
+        float3 direct = abs(fieldXYZ[idx]);
+        float3 reflected = abs(reflectedFieldXYZ[idx]);
+        energy += direct + reflected;
+    }
+
+    // yz 평면
+    int2 yzCoord = int2(int(worldPos.y / CELL_SIZE) + half_grid, int(worldPos.z / CELL_SIZE) + half_grid);
+    if (isInGrid(yzCoord))
+    {
+        uint idx = toIndex(2, uint2(yzCoord));
+        float3 direct = abs(fieldXYZ[idx]);
+        float3 reflected = abs(reflectedFieldXYZ[idx]);
+        energy += direct + reflected;
+    }
+
+    return energy / 3.0;
 }
 
 [shader("compute")]
@@ -174,10 +179,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     float4 color = float4(0.0, 0.0, 0.0, 1.0);
     float closestT = 1e30;
-    float3 hitNormal = float3(0, 1, 0);
     float3 hitPos = float3(0, 0, 0);
 
-    // 큐브 교차 검사 (하드코딩)
+    // 큐브 교차 (하드코딩)
     static const int CUBE_COUNT = 5;
     float3 cubePositions[CUBE_COUNT] = {
         float3(-20.0, 0.0, 5.0),
@@ -213,12 +217,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             {
                 closestT = tHit;
                 hitPos = rayOrigin + rayDirection * tHit;
-                hitNormal = normal;
             }
         }
     }
 
-    // 바닥 교차 검사 (z축이 높이)
+    // 바닥 교차 (z축 높이)
     float planeZ = scene.plane.position.z;
     if (abs(rayDirection.z) > 0.0001)
     {
@@ -227,16 +230,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         {
             closestT = t;
             hitPos = rayOrigin + rayDirection * t;
-            hitNormal = float3(0, 0, 1);
         }
     }
 
-    // 히트했으면 3평면 에너지 쿼리
+    // 히트 지점에서 direct + reflected 에너지 쿼리
     if (closestT < 1e30)
     {
-        float3 energy = queryEnergy(hitPos, hitNormal);
-        float3 brightness = clamp(energy, float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0));
-        color = float4(brightness, 1.0);
+        float3 energy = queryEnergy(hitPos);
+        float intensity = saturate(length(energy));
+        color = float4(intensity, intensity, intensity, 1.0);
     }
 
     outputImage[texCoord] = color;
